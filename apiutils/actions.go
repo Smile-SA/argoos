@@ -17,6 +17,7 @@ var (
 	KubeMasterURL       = "http://kube-master:8080"
 	SkipSSLVerification = true
 	Updates             = map[string]*Update{}
+	RolloutDelay        = time.Duration(5) * time.Second
 	stopRollout         = make(chan int)
 	rolloutStarted      = false
 )
@@ -60,7 +61,7 @@ func rollout() {
 		select {
 		case <-stopRollout:
 			return
-		case <-time.Tick(1 * time.Second):
+		case <-time.Tick(RolloutDelay):
 			for api, update := range Updates {
 				// cleanup
 				update.Containers = cleanupContainerDupli(update.Containers)

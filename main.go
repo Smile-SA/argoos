@@ -1,7 +1,6 @@
 package main
 
 import (
-	"argoos/apiutils"
 	"flag"
 	"io/ioutil"
 	"log"
@@ -9,6 +8,8 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+
+	"github.com/Smile-SA/argoos/apiutils"
 )
 
 func sig() {
@@ -44,10 +45,16 @@ func main() {
 		apiutils.SkipSSLVerification = true
 	}
 
+	flag.DurationVar(&apiutils.RolloutDelay,
+		"rollout-delay",
+		apiutils.RolloutDelay,
+		`Rollout delay in ParseDuration format, see https://golang.org/pkg/time/#ParseDuration.
+	This delay should be higher if your deployment can be impacted by severals images at once`)
+
 	flag.StringVar(&apiutils.KubeMasterURL,
 		"master",
 		apiutils.KubeMasterURL,
-		"Kube master host:port")
+		"Kube master scheme://host:port")
 	flag.BoolVar(&apiutils.SkipSSLVerification,
 		"skip-ssl-verification",
 		apiutils.SkipSSLVerification,
