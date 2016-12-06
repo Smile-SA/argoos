@@ -2,7 +2,7 @@ FROM busybox
 
 MAINTAINER Patrice FERLET <patrice.ferlet@smile.fr>
 
-ENV VERSION 1-alpha1
+ENV VERSION 1-beta1
 
 
 EXPOSE 3000
