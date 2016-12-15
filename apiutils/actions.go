@@ -34,8 +34,8 @@ func init() {
 // Avoid container duplication - sometimes regitry sends
 // two events, one for the tag version +  one for the "latest" tag.
 // We should only use tag version in that case.
-func cleanupContainerDupli(containers []Container) []Container {
-	names := map[string]Container{}
+func cleanupContainerDupli(containers []*Container) []*Container {
+	names := map[string]*Container{}
 	for _, c := range containers {
 		if _, ok := names[c.Name]; ok {
 			p := strings.Split(c.Image, ":")
@@ -47,7 +47,7 @@ func cleanupContainerDupli(containers []Container) []Container {
 			names[c.Name] = c
 		}
 	}
-	ctn := []Container{}
+	ctn := []*Container{}
 	for _, c := range names {
 		ctn = append(ctn, c)
 	}
@@ -126,19 +126,17 @@ func updateDeployment(dep map[string]string, event Event) {
 	if _, ok := Updates[api]; !ok {
 		// prepare update in map
 		Updates[api] = &Update{
-			Containers: make([]Container, 0),
+			Containers: make([]*Container, 0),
 		}
 	}
 
-	containers := Updates[api].Containers
-	containers = append(containers, Container{
+	Updates[api].Containers = append(Updates[api].Containers, &Container{
 		Image: fmt.Sprintf("%s/%s:%s",
 			event.Request.Host,
 			event.Target.Repository,
 			event.Target.Tag),
 		Name: dep["container"],
 	})
-	Updates[api].Containers = containers
 }
 
 // Fetch namespaces from kubernetes api.

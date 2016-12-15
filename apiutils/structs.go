@@ -66,5 +66,5 @@ type Events struct {
 
 // Update is a container list to be patched in k8s.
 type Update struct {
-	Containers []Container `json:"containers"`
+	Containers []*Container `json:"containers"`
 }
