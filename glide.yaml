@@ -1,0 +1,9 @@
+package: github.com/Smile-SA/argoos
+import:
+- package: k8s.io/client-go
+  version: v2.0.0-alpha.1
+  subpackages:
+  - kubernetes
+  - pkg/api/v1
+  - pkg/apis/extensions/v1beta1
+  - rest
