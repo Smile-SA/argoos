@@ -32,24 +32,35 @@ func Action(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// Health return always "ok" with 200 OK. Usefull to check liveness.
 func Health(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("ok"))
 }
 
 func main() {
+	host := ":3000"
+
 	if v := os.Getenv("KUBE_MASTER_URL"); len(v) > 0 {
 		apiutils.KubeMasterURL = v
 	}
 
 	if v := os.Getenv("SKIP_SSL_VERIFICATION"); strings.ToUpper(v) == "TRUE" {
 		apiutils.SkipSSLVerification = true
+		// Certificates
+		if v := os.Getenv("CA_FILE"); len(v) > 0 {
+			apiutils.CAFile = v
+		}
+		if v := os.Getenv("CERT_FILE"); len(v) > 0 {
+			apiutils.CertFile = v
+		}
+		if v := os.Getenv("KEY_FILE"); len(v) > 0 {
+			apiutils.KeyFile = v
+		}
 	}
 
-	flag.DurationVar(&apiutils.RolloutDelay,
-		"rollout-delay",
-		apiutils.RolloutDelay,
-		`Rollout delay in ParseDuration format, see https://golang.org/pkg/time/#ParseDuration.
-	This delay should be higher if your deployment can be impacted by severals images at once`)
+	if v := os.Getenv("LISTEN"); len(v) > 0 {
+		host = v
+	}
 
 	flag.StringVar(&apiutils.KubeMasterURL,
 		"master",
@@ -59,6 +70,25 @@ func main() {
 		"skip-ssl-verification",
 		apiutils.SkipSSLVerification,
 		"Skip SSL verification for kubernetes api")
+	flag.StringVar(&host,
+		"listen",
+		host,
+		"Listen interface, could be host:port, or :port")
+
+	// certs
+	flag.StringVar(&apiutils.CAFile,
+		"ca-file",
+		apiutils.CAFile,
+		"Certificate Authority certificate file path")
+	flag.StringVar(&apiutils.CertFile,
+		"cert-file",
+		apiutils.CertFile,
+		"Client certificate file path")
+	flag.StringVar(&apiutils.KeyFile,
+		"key-file",
+		apiutils.KeyFile,
+		"Client private certificate file path")
+
 	flag.Parse()
 
 	go sig()
@@ -67,6 +97,6 @@ func main() {
 	log.Println("Starting")
 	http.HandleFunc("/healthz", Health)
 	http.HandleFunc("/event", Action)
-	log.Fatal(http.ListenAndServe(":3000", nil))
+	log.Fatal(http.ListenAndServe(host, nil))
 
 }

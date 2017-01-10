@@ -1,251 +1,148 @@
 package apiutils
 
 import (
-	"bytes"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
-	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
-	"time"
+
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/pkg/api/v1"
+	"k8s.io/client-go/pkg/apis/extensions/v1beta1"
+	"k8s.io/client-go/rest"
 )
 
 var (
-	KubeMasterURL       = "http://kube-master:8080"
+	// KubeMasterURL, URL to kubernetes master.
+	KubeMasterURL = "http://kube-master:8080"
+	// SkipSSLVerification allows to connect kubernetes without verifying certificates.
 	SkipSSLVerification = true
-	Updates             = map[string]*Update{}
-	RolloutDelay        = time.Duration(5) * time.Second
-	stopRollout         = make(chan int)
-	rolloutStarted      = false
+
+	// CAFile to use with kubernetes if any.
+	CAFile = ""
+
+	// CertFile to use with kubernetes if any.
+	CertFile = ""
+
+	// KeyFile private key to use with kubernetes, if any.
+	KeyFile = ""
+
+	toUpdate       = make(chan *v1beta1.Deployment)
+	stopRollout    = make(chan int)
+	rolloutStarted = false
+	kubeConfig     = &rest.Config{}
+	kube           = &kubernetes.Clientset{}
+	versionreg     = regexp.MustCompile(`:\d+\.\d+\.\d+$`)
+	latestreg      = regexp.MustCompile(`:latest$`)
 )
 
 const (
-	deploymentApiVersion = "extensions/v1beta1"
-	argoosLabel          = "argoos.io/policy"
+	argoosLabel = "argoos.io/policy"
 )
 
 func init() {
-	Updates = make(map[string]*Update)
-}
-
-// Avoid container duplication - sometimes regitry sends
-// two events, one for the tag version +  one for the "latest" tag.
-// We should only use tag version in that case.
-func cleanupContainerDupli(containers []Container) []Container {
-	names := map[string]Container{}
-	for _, c := range containers {
-		if _, ok := names[c.Name]; ok {
-			p := strings.Split(c.Image, ":")
-			version := p[len(p)-1]
-			if version != "lastest" {
-				names[c.Name] = c
-			}
-		} else {
-			names[c.Name] = c
-		}
-	}
-	ctn := []Container{}
-	for _, c := range names {
-		ctn = append(ctn, c)
-	}
-	return ctn
+	kubeConfig.Host = KubeMasterURL
+	kube, _ = kubernetes.NewForConfig(kubeConfig)
 }
 
 // Check Updates map to send new deployment configuration to Kubernetes.
+//
+// TODO: deployments can have several container updates but we don't check this. Maybe
+// the solution is to go back to a pool system or be sure that registry finished
+// the entire push processes to launch deployment updates.
 func rollout() {
-	rolloutStarted = true
 	for {
 		select {
 		case <-stopRollout:
 			return
-		case <-time.Tick(RolloutDelay):
-			for api, update := range Updates {
-				// cleanup
-				update.Containers = cleanupContainerDupli(update.Containers)
-
-				log.Println("updating...", api, update)
-
-				// initialize a configuration update map that will be
-				// encoded in json
-				data := map[string]interface{}{
-					"spec": map[string]interface{}{
-						"template": map[string]interface{}{
-							"spec": update,
-						},
-					},
-				}
-				c, _ := json.Marshal(data)
-				buff := bytes.NewReader(c)
-				// Create a request to Kubernetes api as PATCH
-				req, err := http.NewRequest(http.MethodPatch, api, buff)
-				if err != nil {
+		case u := <-toUpdate:
+			go func(u *v1beta1.Deployment) {
+				if _, err := kube.Deployments(u.Namespace).Update(u); err != nil {
 					log.Println(err)
 				}
-				req.Header.Add("Content-Type", "application/merge-patch+json")
-
-				// Avoid SSL veification if needed
-				client := http.Client{}
-				if SkipSSLVerification {
-					client.Transport = &http.Transport{
-						TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-					}
-				}
-				// Launch deployment update
-				resp, err := client.Do(req)
-				rb, _ := ioutil.ReadAll(resp.Body)
-				if err != nil {
-					log.Println(req)
-					log.Println(resp)
-					log.Println(err)
-					log.Println(string(rb))
-				} else {
-					log.Println(req.URL.String(), "called", resp.StatusCode, resp.Status)
-					log.Println(string(rb))
-				}
-
-				// and remove update from the list
-				delete(Updates, api)
-			}
+			}(u)
 		}
 	}
-
-}
-
-// append update to the global Updates var that is parsed by rollout() function.
-func updateDeployment(dep map[string]string, event Event) {
-	// prepare map key to be the URL to hit
-	api := fmt.Sprintf("%s/apis/%s/namespaces/%s/deployments/%s",
-		deploymentApiVersion,
-		KubeMasterURL,
-		dep["namespace"],
-		dep["name"])
-
-	if _, ok := Updates[api]; !ok {
-		// prepare update in map
-		Updates[api] = &Update{
-			Containers: make([]Container, 0),
-		}
-	}
-
-	containers := Updates[api].Containers
-	containers = append(containers, Container{
-		Image: fmt.Sprintf("%s/%s:%s",
-			event.Request.Host,
-			event.Target.Repository,
-			event.Target.Tag),
-		Name: dep["container"],
-	})
-	Updates[api].Containers = containers
 }
 
 // Fetch namespaces from kubernetes api.
 func getNameSpaces() []string {
-	api := "/api/v1/namespaces"
-	resp, err := http.Get(KubeMasterURL + api)
-	if err != nil {
-		log.Println(err)
-		return nil
-	}
-	decoder := json.NewDecoder(resp.Body)
-	namespaces := APIResponse{}
-	decoder.Decode(&namespaces)
+	ns := kube.Namespaces()
 	ret := []string{}
-	for _, namespace := range namespaces.Items {
-		ret = append(ret, namespace.Metadata.Name)
+	n, _ := ns.List(v1.ListOptions{})
+	for _, n := range n.Items {
+		ret = append(ret, n.GetName())
 	}
-
 	return ret
 }
 
 // fetch each deployment in all namespaces.
-func getDeployments() []map[string]string {
-	namespaces := getNameSpaces()
-	ret := []map[string]string{}
-	for _, ns := range namespaces {
-		api := "/apis/%s/namespaces/%s/deployments"
-		resp, _ := http.Get(KubeMasterURL + fmt.Sprintf(api, deploymentApiVersion, ns))
-		spec := &APIResponse{}
-		d := json.NewDecoder(resp.Body)
-		d.Decode(spec)
-		for _, item := range spec.Items {
-			for _, t := range item.Spec.Template.Spec.Containers {
-				policy := "none"
-				if v, ok := item.Metadata.Labels[argoosLabel]; ok {
-					switch v := v.(type) {
-					case string:
-						policy = v
-					}
-				}
-				ret = append(ret, map[string]string{
-					"namespace": ns,
-					"name":      item.Metadata.Name,
-					"container": t.Name,
-					"image":     t.Image,
-					"policy":    policy,
-				})
-			}
-		}
+// REFACTO
+func getDeployments() []*v1beta1.DeploymentList {
+	ns := kube.Namespaces()
+	n, _ := ns.List(v1.ListOptions{})
+	ret := []*v1beta1.DeploymentList{}
+	for _, n := range n.Items {
+		dep := kube.Deployments(n.GetName())
+		l, _ := dep.List(v1.ListOptions{})
+		ret = append(ret, l)
 	}
 	return ret
+}
+
+func checkToUpdate(event Event, d v1beta1.Deployment, policy string) {
+	pvMajor, pvMinor, pvPatch := getVersion(event.Target.Tag)
+	for i, c := range d.Spec.Template.Spec.Containers {
+		vMajor, vMinor, vPatch := getVersion(c.Image)
+		update := false
+		switch policy {
+		case "all":
+			update = true
+		case "major":
+			update = pvMajor > vMajor
+			fallthrough
+		case "minor":
+			update = update || (pvMajor == vMajor && pvMinor > vMinor)
+			fallthrough
+		case "patch":
+			update = update || (pvMajor == vMajor && pvMinor == vMinor && pvPatch > vPatch)
+		}
+		c.Image = fmt.Sprintf("%s/%s:%s", event.Request.Host, event.Target.Repository, event.Target.Tag)
+		d.Spec.Template.Spec.Containers[i] = c
+		if update {
+			go func() {
+				toUpdate <- &d
+			}()
+		}
+	}
 }
 
 // parse deployments and check policy label to know what to do.
 func getImpactedDeployments(event Event) {
 	deployments := getDeployments()
-	eimage := fmt.Sprintf("%s/%s",
-		event.Request.Host,
-		event.Target.Repository)
+	eimage := fmt.Sprintf("%s/%s", event.Request.Host, event.Target.Repository)
 	for _, d := range deployments {
-		imgver := strings.Split(d["image"], ":")
-		image := strings.Join(imgver[:len(imgver)-1], ":")
-		if image != eimage {
-			log.Println("Image has changed, no update for security reason")
-			continue
-		}
-
-		update := false
-		switch d["policy"] {
-		case "none":
-			// do nothing !
-		case "latest":
-			// if updated image is "latest" and policy is "latest", then update is ok
-			if event.Target.Tag == "latest" {
-				update = true
+		for _, i := range d.Items {
+			labels := i.GetLabels()
+			policy := ""
+			if v, ok := labels[argoosLabel]; ok {
+				policy = v
+			} else {
+				continue
 			}
-		case "all":
-			// upate for any image version
-			update = true
-		default:
-			// compare image sent in registry and image found in deployment
-			maj, min, patch := getVersion(event.Target.Tag)
-			imaj, imin, ipatch := getVersion(imgver[len(imgver)-1])
-
-			switch d["policy"] {
-			case "patch":
-				if maj == imaj && min == imin && patch > ipatch {
-					update = true
-				}
-				fallthrough
-			case "minor":
-				if maj == imaj && min > imin {
-					update = true
-				}
-				fallthrough
-			case "major":
-				if maj > imaj {
-					update = true
+			for _, c := range i.Spec.Template.Spec.Containers {
+				// Remove version if any
+				dimage := versionreg.ReplaceAllString(c.Image, "")
+				dimage = latestreg.ReplaceAllString(dimage, "")
+				if dimage == eimage {
+					// there, pushed image corresponds to the deployment image
+					// so we can check if we should update it
+					checkToUpdate(event, i, policy)
 				}
 			}
 		}
-
-		if !update {
-			log.Println("SKIPPED", d["namespace"], d["name"], d["image"], d["tag"])
-			continue
-		}
-		updateDeployment(d, event)
 	}
 }
 
@@ -260,6 +157,7 @@ func getEvents(c []byte) Events {
 		return events
 	}
 	for _, event := range events.Events {
+		// only get "push" events
 		if event.Action == "push" && len(event.Target.Tag) > 0 {
 			reduced = append(reduced, event)
 		}
