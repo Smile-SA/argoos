@@ -59,6 +59,7 @@ func rollout() {
 			return
 		case u := <-toUpdate:
 			go func(u *v1beta1.Deployment) {
+				log.Println("Deploying", u)
 				if _, err := kube.Deployments(u.Namespace).Update(u); err != nil {
 					log.Println(err)
 				}

@@ -25,6 +25,7 @@ func sig() {
 
 // Action is sent each time the registry sends an event.
 func Action(w http.ResponseWriter, r *http.Request) {
+	log.Printf("%s %s %s\n", r.RemoteAddr, r.Method, r.URL)
 	c, _ := ioutil.ReadAll(r.Body)
 	events := apiutils.GetEvents(c)
 	for _, e := range events.Events {
@@ -34,6 +35,7 @@ func Action(w http.ResponseWriter, r *http.Request) {
 
 // Health return always "ok" with 200 OK. Usefull to check liveness.
 func Health(w http.ResponseWriter, r *http.Request) {
+	log.Printf("%s %s %s\n", r.RemoteAddr, r.Method, r.URL)
 	w.Write([]byte("ok"))
 }
 
