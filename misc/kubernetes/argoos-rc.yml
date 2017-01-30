@@ -13,7 +13,7 @@ spec:
         app: argoos
     spec:
       containers:
-      - image: smileoss/argoos
+      - image: smilelab/argoos
         name: argoos
         ports:
         - containerPort: 3000
