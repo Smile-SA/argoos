@@ -13,5 +13,5 @@ LABEL name="Argoos"    \
       version=$VERSION \
       description="Argoos can be used as Docker \
       webhook receiver to update Kubernetes deployment" \
-      doc="docker run --rm smileoss/argoos -help"
+      doc="docker run --rm smilelab/argoos -help"
 
