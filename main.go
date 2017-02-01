@@ -12,6 +12,7 @@ import (
 	"github.com/Smile-SA/argoos/apiutils"
 )
 
+// signal handling, if server should stop, cleanup goroutines.
 func sig() {
 	c := make(chan os.Signal, 0)
 	signal.Notify(c, os.Interrupt)
@@ -41,6 +42,7 @@ func Health(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	host := ":3000"
+	var servercert, serverkey string
 
 	if v := os.Getenv("KUBE_MASTER_URL"); len(v) > 0 {
 		apiutils.KubeMasterURL = v
@@ -58,6 +60,14 @@ func main() {
 		if v := os.Getenv("KEY_FILE"); len(v) > 0 {
 			apiutils.KeyFile = v
 		}
+	}
+
+	if v := os.Getenv("SERVER_CERT"); len(v) > 0 {
+		servercert = v
+	}
+
+	if v := os.Getenv("SERVER_KEY"); len(v) > 0 {
+		serverkey = v
 	}
 
 	if v := os.Getenv("LISTEN"); len(v) > 0 {
@@ -81,15 +91,26 @@ func main() {
 	flag.StringVar(&apiutils.CAFile,
 		"ca-file",
 		apiutils.CAFile,
-		"Certificate Authority certificate file path")
+		"Certificate Authority certificate file path (only if using https to contact kubernetes api)")
 	flag.StringVar(&apiutils.CertFile,
 		"cert-file",
 		apiutils.CertFile,
-		"Client certificate file path")
+		"Client certificate file path (client authentication only)")
 	flag.StringVar(&apiutils.KeyFile,
 		"key-file",
 		apiutils.KeyFile,
-		"Client private certificate file path")
+		"Client private key file path (client authentication only)")
+
+	// argoos can serve https
+	flag.StringVar(&servercert,
+		"server-cert",
+		servercert,
+		"Server certificate to serve SSL")
+
+	flag.StringVar(&serverkey,
+		"server-key",
+		serverkey,
+		"Server key to server SSL")
 
 	flag.Parse()
 
@@ -97,8 +118,14 @@ func main() {
 	apiutils.StartRollout()
 
 	log.Println("Starting")
+
 	http.HandleFunc("/healthz", Health)
 	http.HandleFunc("/event", Action)
-	log.Fatal(http.ListenAndServe(host, nil))
+
+	if len(serverkey) > 0 && len(servercert) > 0 {
+		log.Fatal(http.ListenAndServeTLS(host, servercert, serverkey, nil))
+	} else {
+		log.Fatal(http.ListenAndServe(host, nil))
+	}
 
 }
