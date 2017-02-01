@@ -44,6 +44,9 @@ const (
 
 func init() {
 	kubeConfig.Host = KubeMasterURL
+	kubeConfig.KeyFile = KeyFile   // authenticate with key
+	kubeConfig.CAFile = CAFile     // ca certificate
+	kubeConfig.CertFile = CertFile // client certificate
 	kube, _ = kubernetes.NewForConfig(kubeConfig)
 }
 
