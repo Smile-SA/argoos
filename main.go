@@ -12,6 +12,16 @@ import (
 	"github.com/Smile-SA/argoos/apiutils"
 )
 
+// TOKEN global value. If no token set, TOKEN points on nil.
+var TOKEN string
+
+// BadTokenError is raised when header token is not ok
+type BadTokenError struct{}
+
+func (b *BadTokenError) Error() string {
+	return "Bad Token"
+}
+
 // signal handling, if server should stop, cleanup goroutines.
 func sig() {
 	c := make(chan os.Signal, 0)
@@ -24,8 +34,29 @@ func sig() {
 	os.Exit(0)
 }
 
+func checkToken(r *http.Request) error {
+	if TOKEN == "" {
+		// no token provided in environment or flags,
+		// no problem !
+		return nil
+	}
+
+	token := strings.TrimSpace(r.Header.Get("X-Argoos-Token"))
+	if len(token) < 1 {
+		return &BadTokenError{}
+	}
+	return nil
+}
+
 // Action is sent each time the registry sends an event.
 func Action(w http.ResponseWriter, r *http.Request) {
+	if err := checkToken(r); err != nil {
+		log.Printf("%s %s %s ERROR::%s\n", r.RemoteAddr, r.Method, r.URL, err.Error())
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(err.Error()))
+		return
+	}
+
 	log.Printf("%s %s %s\n", r.RemoteAddr, r.Method, r.URL)
 	c, _ := ioutil.ReadAll(r.Body)
 	events := apiutils.GetEvents(c)
@@ -74,6 +105,10 @@ func main() {
 		host = v
 	}
 
+	if v := os.Getenv("TOKEN"); len(v) > 0 {
+		TOKEN = strings.TrimSpace(v)
+	}
+
 	flag.StringVar(&apiutils.KubeMasterURL,
 		"master",
 		apiutils.KubeMasterURL,
@@ -111,6 +146,11 @@ func main() {
 		"server-key",
 		serverkey,
 		"Server key to server SSL")
+
+	flag.StringVar(&TOKEN,
+		"token",
+		TOKEN,
+		"Token that should be sent by docker registry to be authorized. If set, you must add token in X-Argoos-Token header.")
 
 	flag.Parse()
 

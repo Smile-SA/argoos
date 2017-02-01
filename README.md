@@ -84,3 +84,46 @@ If you serve registry by kubernetes, you can add a configmap to mount on "`/etc/
 
 Argoos will contact "kubernetes" service that is generaly "kubernetes.default" on "8080" port. But you can change it using environment variables in argoos-rc.yml file.
 
+
+# Restrict access
+
+You may restrict access by asking X-Argoos-Token header from Docker registry.
+
+
+```yaml
+notifications:
+  endpoints:
+    - name: argoos
+      url: http://argoos.url:3000/event
+      headers:
+          X-Argoos-Token: <you token here>
+      timeout: 500ms
+      threshold: 5
+      backoff: 1s
+```
+
+By setting TOKEN environmnent variable or "-token" argument to the argoos command line, then "/event" api will repond "Unauthorized" if the token is not set and/or doesn't correspond.
+
+It's **strongly recommanded to set that token in a kubernetes "secret"**
+
+
+```bash
+$ TOKEN=$(tr -dc "[:alnum:]" < /dev/urandom | head -c32)
+$ echo $TOKEN
+$ kubectl create secret generic argoos-token --from-litteral=token=$TOKEN
+```
+
+Use the token in you registry configuration, then use "argoos-token" secret in argoos deployment:
+
+```yaml
+# ...
+    - image: smilelab/argoos
+      name: argoos
+      env:
+      - name: TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: argoos-token
+            key: token
+```
+
