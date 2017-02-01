@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -14,6 +15,9 @@ import (
 
 // TOKEN global value. If no token set, TOKEN points on nil.
 var TOKEN string
+
+// Version changed by deploy script.
+var VERSION = "master"
 
 // BadTokenError is raised when header token is not ok
 type BadTokenError struct{}
@@ -74,6 +78,10 @@ func Health(w http.ResponseWriter, r *http.Request) {
 func main() {
 	host := ":3000"
 	var servercert, serverkey string
+
+	askedVersion := false
+
+	flag.BoolVar(&askedVersion, "version", askedVersion, "Print argoos version and exit")
 
 	if v := os.Getenv("KUBE_MASTER_URL"); len(v) > 0 {
 		apiutils.KubeMasterURL = v
@@ -153,6 +161,11 @@ func main() {
 		"Token that should be sent by docker registry to be authorized. If set, you must add token in X-Argoos-Token header.")
 
 	flag.Parse()
+
+	if askedVersion {
+		fmt.Println(VERSION)
+		os.Exit(0)
+	}
 
 	go sig()
 	apiutils.StartRollout()

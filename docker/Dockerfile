@@ -2,11 +2,10 @@ FROM busybox
 
 MAINTAINER Patrice FERLET <patrice.ferlet@smile.fr>
 
-ENV VERSION 1-beta1
-
-
+ARG VERSION
 EXPOSE 3000
-ADD https://github.com/Smile-SA/argoos/releases/download/v1-beta2/argoos-linux-x86_64 /argoos
+
+ADD https://github.com/Smile-SA/argoos/releases/download/${VERSION}/argoos-linux-x86_64 /argoos
 ENTRYPOINT ["/argoos"]
 
 LABEL name="Argoos"    \

@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# no tag: stop !
+TAG=$2
+[ -z "$TAG" ] && error "You must pass tag name"
+
 # Write the token in ~/.config/argoos-github-token to be able to
 # - create release
 # - upload assets
@@ -32,8 +36,9 @@ function getUploadURL() {
 
 # build the release
 function build() {
-    go build -tags netgo
+    go build -tags netgo -ldflags '-X main.VERSION='$TAG
     strip argoos
+    [ $(./argoos -version) == ${TAG} ] || error "Bad version from argoos -version :: "$(./argoos -version)
 }
 
 
@@ -48,15 +53,24 @@ function upload() {
         --data-binary @argoos $url
 }
 
-# no tag: stop !
-TAG=$1
-[ -z "$TAG" ] && error "You must pass tag name"
+case $1 in
+    build)
+        build;
+        ;;
+    release)
+        [ $TAG == "master" ] && error "couldn't release master"
+        createRelease;
+        ;;
+    upload)
+        [ $TAG == "master" ] && error "couldn't upload master"
+        REL_URL=$(getUploadURL);
+        upload $REL_URL;
+        ;;
+    *)
+        echo $(basename $0) "build|release|upload <TAGNAME>"
+        exit 1
+        ;;
+esac
 
-
-build
-createRelease
-REL_URL=$(getUploadURL)
-upload $REL_URL
-
-
+exit 0
 
