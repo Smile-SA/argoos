@@ -1,4 +1,4 @@
-FROM busybox
+FROM scratch
 
 MAINTAINER Patrice FERLET <patrice.ferlet@smile.fr>
 

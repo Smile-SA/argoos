@@ -3,7 +3,7 @@
 echo "------ HOOK START - BUILD -------"
 printenv
 
-wget https://github.com/Smile-SA/argoos/releases/download/$VERSION/argoos-linux-x86_64 -O argoos
+wget https://github.com/Smile-SA/argoos/releases/download/$SOURCE_TAG/argoos-linux-x86_64 -O argoos
 docker build -t $IMAGE_NAME .
 
 echo "------ HOOK END - BUILD -------"
