@@ -3,6 +3,7 @@
 echo "------ HOOK START - BUILD -------"
 printenv
 
-docker build --build-arg VERSION=$DOCKER_TAG -t $IMAGE_NAME .
+wget https://github.com/Smile-SA/argoos/releases/download/$VERSION/argoos-linux-x86_64 -O argoos
+docker build -t $IMAGE_NAME .
 
 echo "------ HOOK END - BUILD -------"
