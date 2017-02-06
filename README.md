@@ -1,6 +1,6 @@
-# Argoos, auto-update deployment on Kubernetes
+# Argoos, push to registry to deploy on Kubernetes
 
-Argoos is a service able to listen Docker Regitry events, fetch corresponding Kubernetes deployment and ask for rollout to them. It takes advantage from Docker Registry "notifications" you should configure.
+Argoos is a service able to listen Docker Registry events, fetch corresponding Kubernetes deployment and ask for rollout to them. It takes advantage from Docker Registry "notifications" you should configure.
 
 Deployment must indicate a label to provides rules to Argoos. Without that label, Argoos will never touch deployment.
 
@@ -80,15 +80,14 @@ kubectl create -f https://raw.githubusercontent.com/Smile-SA/argoos/devel/misc/k
 
 Everything is configured to be append on "kube-system" namespace.
 
-If you serve registry by kubernetes, you can add a configmap to mount on "`/etc/docker/registry/config.yml`" using the explanation given above. Change "url" to "argoos.kube-system" **without the port** (argoos kubernetes service listens on 80).
+If you serve registry by kubernetes, you can add a configmap to mount on "`/etc/docker/registry/config.yml`" using the explanation given above. Change "`url`" to "argoos.kube-system" **without the port** (argoos kubernetes service listens on 80).
 
-Argoos will contact "kubernetes" service that is generaly "kubernetes.default" on "8080" port. But you can change it using environment variables in argoos-rc.yml file.
+Argoos will contact "kubernetes" API that is generally "kubernetes.default" on "8080" port. You can change it using environment variables in argoos-rc.yml file.
 
 
 # Restrict access
 
 You may restrict access by asking X-Argoos-Token header from Docker registry.
-
 
 ```yaml
 notifications:
@@ -102,9 +101,9 @@ notifications:
       backoff: 1s
 ```
 
-By setting TOKEN environmnent variable or "-token" argument to the argoos command line, then "/event" api will repond "Unauthorized" if the token is not set and/or doesn't correspond.
+By setting TOKEN environment variable or "-token" argument to the argoos command line, then "/event" api will respond "Unauthorized" if the token is not set and/or doesn't correspond.
 
-It's **strongly recommanded to set that token in a kubernetes "secret"**
+It's **strongly recommended to set that token in a kubernetes "secret"**
 
 
 ```bash
