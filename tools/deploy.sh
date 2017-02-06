@@ -36,7 +36,8 @@ function getUploadURL() {
 
 # build the release
 function build() {
-    go build -tags netgo -ldflags '-X main.VERSION='$TAG
+    #go build -tags netgo -ldflags '-X main.VERSION='$TAG
+    CGO_ENABLED=0 GOGC=off go build -ldflags '-X main.VERSION='$TAG -a -installsuffix nocgo -o argoos
     strip argoos
     [ $(./argoos -version) == ${TAG} ] || error "Bad version from argoos -version :: "$(./argoos -version)
 }
