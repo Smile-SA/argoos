@@ -1,0 +1,13 @@
+version: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: registry-volume
+  namespace: kube-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+# vim:ft=yaml:et:sw=2:ts=2:sts=2:

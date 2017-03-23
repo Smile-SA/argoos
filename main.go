@@ -49,6 +49,9 @@ func checkToken(r *http.Request) error {
 	if len(token) < 1 {
 		return &BadTokenError{}
 	}
+	if token != TOKEN {
+		return &BadTokenError{}
+	}
 	return nil
 }
 
@@ -63,7 +66,11 @@ func Action(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("%s %s %s\n", r.RemoteAddr, r.Method, r.URL)
 	c, _ := ioutil.ReadAll(r.Body)
-	events := apiutils.GetEvents(c)
+	registry := r.Header.Get("X-Argoos-Registry-Name")
+	if apiutils.Verbose {
+		log.Println("Registry override:", registry)
+	}
+	events := apiutils.GetEvents(c, registry)
 	for _, e := range events.Events {
 		apiutils.ImpactedDeployments(e)
 	}
@@ -72,7 +79,7 @@ func Action(w http.ResponseWriter, r *http.Request) {
 // Health return always "ok" with 200 OK. Usefull to check liveness.
 func Health(w http.ResponseWriter, r *http.Request) {
 	log.Printf("%s %s %s\n", r.RemoteAddr, r.Method, r.URL)
-	w.Write([]byte("ok"))
+	w.Write([]byte("ok\n"))
 }
 
 func main() {
@@ -87,18 +94,38 @@ func main() {
 		apiutils.KubeMasterURL = v
 	}
 
-	if v := os.Getenv("SKIP_SSL_VERIFICATION"); strings.ToUpper(v) == "TRUE" {
-		apiutils.SkipSSLVerification = true
-		// Certificates
-		if v := os.Getenv("CA_FILE"); len(v) > 0 {
-			apiutils.CAFile = v
+	if v := os.Getenv("INCLUSTER"); len(v) > 0 {
+		switch strings.ToUpper(v) {
+		case "FALSE", "NO", "0":
+			apiutils.InCluster = false
 		}
-		if v := os.Getenv("CERT_FILE"); len(v) > 0 {
-			apiutils.CertFile = v
+	}
+
+	if v := os.Getenv("SKIP_SSL_VERIFICATION"); len(v) > 0 {
+		switch strings.ToUpper(v) {
+		case "FALSE", "NO", "0":
+			apiutils.SkipSSLVerification = false
 		}
-		if v := os.Getenv("KEY_FILE"); len(v) > 0 {
-			apiutils.KeyFile = v
+	}
+
+	if v := os.Getenv("VERBOSE"); len(v) > 0 {
+		switch strings.ToUpper(v) {
+		case "TRUE", "YES", "1":
+			apiutils.Verbose = true
 		}
+	}
+
+	// Certificates
+	if v := os.Getenv("CA_FILE"); len(v) > 0 {
+		apiutils.CAFile = v
+	}
+
+	if v := os.Getenv("CERT_FILE"); len(v) > 0 {
+		apiutils.CertFile = v
+	}
+
+	if v := os.Getenv("KEY_FILE"); len(v) > 0 {
+		apiutils.KeyFile = v
 	}
 
 	if v := os.Getenv("SERVER_CERT"); len(v) > 0 {
@@ -117,6 +144,17 @@ func main() {
 		TOKEN = strings.TrimSpace(v)
 	}
 
+	flag.BoolVar(&apiutils.InCluster,
+		"incluster",
+		apiutils.InCluster,
+		"if true, argoos will contact kubernetes internally."+
+			"That's the default if you're launching argoos as a Kubernetes application"+
+			"Note that in that case, you can avoid to set kube-master url while argoos will find it itself.")
+
+	flag.BoolVar(&apiutils.Verbose,
+		"verbose",
+		apiutils.Verbose,
+		"Be verbose")
 	flag.StringVar(&apiutils.KubeMasterURL,
 		"master",
 		apiutils.KubeMasterURL,
@@ -167,6 +205,7 @@ func main() {
 		os.Exit(0)
 	}
 
+	apiutils.Config()
 	go sig()
 	apiutils.StartRollout()
 

@@ -16,7 +16,7 @@ import (
 
 var (
 	// KubeMasterURL, URL to kubernetes master.
-	KubeMasterURL = "http://kube-master:8080"
+	KubeMasterURL = "http://kubernetes.default:8080"
 	// SkipSSLVerification allows to connect kubernetes without verifying certificates.
 	SkipSSLVerification = true
 
@@ -34,20 +34,36 @@ var (
 	rolloutStarted = false
 	kubeConfig     = &rest.Config{}
 	kube           = &kubernetes.Clientset{}
-	versionreg     = regexp.MustCompile(`:\d+\.\d+\.\d+$`)
-	latestreg      = regexp.MustCompile(`:latest$`)
+	versionreg     = regexp.MustCompile(`:[^:]*$`)
+	Verbose        = false
+	InCluster      = true
 )
 
 const (
 	argoosLabel = "argoos.io/policy"
 )
 
-func init() {
-	kubeConfig.Host = KubeMasterURL
-	kubeConfig.KeyFile = KeyFile   // authenticate with key
-	kubeConfig.CAFile = CAFile     // ca certificate
-	kubeConfig.CertFile = CertFile // client certificate
-	kube, _ = kubernetes.NewForConfig(kubeConfig)
+func Config() {
+	var err error
+
+	if InCluster {
+		kubeConfig, err = rest.InClusterConfig()
+		if err != nil {
+			log.Println("InClusterConfig failed", err)
+		}
+	} else {
+		kubeConfig.Host = KubeMasterURL
+		kubeConfig.KeyFile = KeyFile   // authenticate with key
+		kubeConfig.CAFile = CAFile     // ca certificate
+		kubeConfig.CertFile = CertFile // client certificate
+	}
+
+	if kube, err = kubernetes.NewForConfig(kubeConfig); err != nil {
+		log.Println(err)
+	} else {
+		log.Println("Set config", kubeConfig)
+	}
+
 }
 
 // Check Updates map to send new deployment configuration to Kubernetes.
@@ -75,7 +91,11 @@ func rollout() {
 func getNameSpaces() []string {
 	ns := kube.Namespaces()
 	ret := []string{}
-	n, _ := ns.List(v1.ListOptions{})
+	n, err := ns.List(v1.ListOptions{})
+	if err != nil {
+		log.Println(err)
+		return []string{}
+	}
 	for _, n := range n.Items {
 		ret = append(ret, n.GetName())
 	}
@@ -86,8 +106,12 @@ func getNameSpaces() []string {
 // REFACTO
 func getDeployments() []*v1beta1.DeploymentList {
 	ns := kube.Namespaces()
-	n, _ := ns.List(v1.ListOptions{})
 	ret := []*v1beta1.DeploymentList{}
+	n, err := ns.List(v1.ListOptions{})
+	if err != nil {
+		log.Println(err)
+		return ret
+	}
 	for _, n := range n.Items {
 		dep := kube.Deployments(n.GetName())
 		l, _ := dep.List(v1.ListOptions{})
@@ -127,6 +151,10 @@ func checkToUpdate(event Event, d v1beta1.Deployment, policy string) {
 func getImpactedDeployments(event Event) {
 	deployments := getDeployments()
 	eimage := fmt.Sprintf("%s/%s", event.Request.Host, event.Target.Repository)
+	if Verbose {
+		log.Println("Event:", event)
+		log.Println("Having image event:", eimage)
+	}
 	for _, d := range deployments {
 		for _, i := range d.Items {
 			labels := i.GetLabels()
@@ -137,10 +165,18 @@ func getImpactedDeployments(event Event) {
 				continue
 			}
 			for _, c := range i.Spec.Template.Spec.Containers {
+				if Verbose {
+					log.Println("Checking image", c.Image)
+				}
 				// Remove version if any
 				dimage := versionreg.ReplaceAllString(c.Image, "")
-				dimage = latestreg.ReplaceAllString(dimage, "")
+				if Verbose {
+					log.Println(dimage, "==", eimage)
+				}
 				if dimage == eimage {
+					if Verbose {
+						log.Println("Check To Update now !")
+					}
 					// there, pushed image corresponds to the deployment image
 					// so we can check if we should update it
 					checkToUpdate(event, i, policy)
@@ -151,7 +187,7 @@ func getImpactedDeployments(event Event) {
 }
 
 // decode json data from event body.
-func getEvents(c []byte) Events {
+func getEvents(c []byte, registry string) Events {
 
 	events := Events{}
 	reduced := []Event{}
@@ -161,6 +197,11 @@ func getEvents(c []byte) Events {
 		return events
 	}
 	for _, event := range events.Events {
+		// force registry name from notification
+		// to override given ip/name from request
+		if len(strings.TrimSpace(registry)) > 0 {
+			event.Request.Host = registry
+		}
 		// only get "push" events
 		if event.Action == "push" && len(event.Target.Tag) > 0 {
 			reduced = append(reduced, event)
@@ -193,8 +234,8 @@ func getVersion(a string) (int, int, int) {
 
 // GetEvents returns events from registry message
 // given from webook body.
-func GetEvents(c []byte) Events {
-	return getEvents(c)
+func GetEvents(c []byte, registry string) Events {
+	return getEvents(c, registry)
 }
 
 // ImpactedDeployments will fetch deployments using the

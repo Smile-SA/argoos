@@ -1,0 +1,40 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: registry
+  name: registry
+  namespace: kube-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: registry
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: registry
+    spec:
+      containers:
+      - image: registry:2
+        name: registry
+        resources: {}
+        volumeMounts:
+        - name: registry-config
+          mountPath: /etc/docker/registry
+        - name: registry-data
+          mountPath: /var/lib/registry
+      volumes:
+        - name: registry-config
+          configMap:
+            name: registry
+        - name: registry-data
+          persistentVolumeClaim:
+            claimName: registry-volume
+
+status: {}
+
+# vim:ft=yaml:et:sw=2:ts=2:sts=2:

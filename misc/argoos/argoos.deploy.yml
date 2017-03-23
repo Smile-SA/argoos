@@ -1,0 +1,32 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  annotations:
+    kubernetes.io/service-account.name: argoos
+  creationTimestamp: null
+  labels:
+    app: argoos
+  name: argoos
+  namespace: kube-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: argoos
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: argoos
+    spec:
+      containers:
+      - image: smilelab/argoos
+        name: argoos
+        resources: {}
+        env:
+          - name: VERBOSE
+            value: "true"
+status: {}
+
+# vim:ft=yaml:et:sw=2:ts=2:sts=2:
